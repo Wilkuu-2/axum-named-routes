@@ -143,7 +143,7 @@ where
     #[inline]
     pub fn fallback<H, T>(mut self, handler: H) -> Self
     where
-        H: Handler<T, S, Future = axum::body::Body>,
+        H: Handler<T, S, Future = Body>,
         T: 'static,
     {
         self.inner = self.inner.fallback(handler);
@@ -154,7 +154,7 @@ where
     #[inline]
     pub fn fallback_service<T>(mut self, service: T) -> Self
     where
-        T: Service<Request<axum::body::Body>, Error = ServiceErr> + Clone + Send + 'static,
+        T: Service<Request<Body>, Error = ServiceErr> + Clone + Send + 'static,
         T::Response: IntoResponse,
         T::Future: Send + 'static,
     {
@@ -205,9 +205,9 @@ where
     ///     "Hello, World!"
     /// }
     ///
-    /// let ui_router: NamedRouter<(), axum::body::Body> = NamedRouter::new()
+    /// let ui_router: NamedRouter<()> = NamedRouter::new()
     ///     .route("index", "/", get(index));
-    /// let base: NamedRouter<(), _> = NamedRouter::new()
+    /// let base: NamedRouter<()> = NamedRouter::new()
     ///     .nest("ui", "/", ui_router)
     ///     .with_state(());
     ///
@@ -265,10 +265,10 @@ where
     pub fn route_layer<L>(mut self, layer: L) -> Self
     where
         L: Layer<Route> + Clone + Send + 'static,
-        L::Service: Service<Request<axum::body::Body>> + Clone + Send + 'static,
-        <L::Service as Service<Request<axum::body::Body>>>::Response: IntoResponse + 'static,
-        <L::Service as Service<Request<axum::body::Body>>>::Error: Into<Infallible> + 'static,
-        <L::Service as Service<Request<axum::body::Body>>>::Future: Send + 'static,
+        L::Service: Service<Request<Body>> + Clone + Send + 'static,
+        <L::Service as Service<Request<Body>>>::Response: IntoResponse + 'static,
+        <L::Service as Service<Request<Body>>>::Error: Into<Infallible> + 'static,
+        <L::Service as Service<Request<Body>>>::Future: Send + 'static,
     {
         self.inner = self.inner.route_layer(layer);
         self
@@ -280,7 +280,7 @@ where
     where
         N: Into<String>,
         P: AsRef<str>,
-        T: Service<Request<axum::body::Body>, Error = ServiceErr> + Clone + Send + 'static,
+        T: Service<Request<Body>, Error = ServiceErr> + Clone + Send + 'static,
         T::Response: IntoResponse,
         T::Future: Send + 'static,
     {
@@ -345,7 +345,7 @@ where
     }
 }
 
-impl Service<Request<axum::body::Body>> for NamedRouter<()>
+impl Service<Request<Body>> for NamedRouter<()>
 {
     type Response = ServiceResp;
     type Error = ServiceErr;
@@ -360,7 +360,7 @@ impl Service<Request<axum::body::Body>> for NamedRouter<()>
     }
 
     #[inline]
-    fn call(&mut self, req: Request<axum::body::Body>) -> Self::Future {
+    fn call(&mut self, req: Request<Body>) -> Self::Future {
         self.inner.call(req)
     }
 }
