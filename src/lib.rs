@@ -10,7 +10,8 @@
 use std::{collections::HashMap, convert::Infallible, path::{PathBuf, Path}, sync::Arc, task::Poll};
 
 use axum::{
-    body::{BoxBody, HttpBody},
+    body::Body,
+
     extract::{
         connect_info::IntoMakeServiceWithConnectInfo, rejection::ExtensionRejection, FromRequestParts,
     },
@@ -23,7 +24,7 @@ use futures::{future::BoxFuture, FutureExt, TryFutureExt};
 use tower_layer::Layer;
 use tower_service::Service;
 
-type ServiceResp = Response<BoxBody>;
+type ServiceResp = Response<Body>;
 type ServiceErr = Infallible;
 type String = std::borrow::Cow<'static, str>;
 
@@ -108,16 +109,15 @@ impl<S: Send + Sync> FromRequestParts<S> for Routes {
 /// when either [`into_make_service`](NamedRouter::into_make_service) or [`into_make_service_with_connect_info`](NamedRouter::into_make_service_with_connect_info)
 /// are called.
 #[derive(Debug)]
-pub struct NamedRouter<S = (), B = axum::body::Body> {
-    inner: axum::Router<S, B>,
+pub struct NamedRouter<S = ()> {
+    inner: axum::Router<S>,
     routes: HashMap<String, PathBuf>,
     nest_sep: String,
 }
 
-impl<S, B> NamedRouter<S, B>
+impl<S> NamedRouter<S>
 where
     S: Clone + Send + Sync + 'static,
-    B: HttpBody + Send + 'static,
 {
     /// Create a new NamedRouter with default values.
     /// The default name separator is `.`
@@ -143,7 +143,7 @@ where
     #[inline]
     pub fn fallback<H, T>(mut self, handler: H) -> Self
     where
-        H: Handler<T, S, B>,
+        H: Handler<T, S, Future = axum::body::Body>,
         T: 'static,
     {
         self.inner = self.inner.fallback(handler);
@@ -154,7 +154,7 @@ where
     #[inline]
     pub fn fallback_service<T>(mut self, service: T) -> Self
     where
-        T: Service<Request<B>, Error = ServiceErr> + Clone + Send + 'static,
+        T: Service<Request<axum::body::Body>, Error = ServiceErr> + Clone + Send + 'static,
         T::Response: IntoResponse,
         T::Future: Send + 'static,
     {
@@ -164,14 +164,13 @@ where
 
     /// The same as [`Router::layer`](axum::Router::layer)
     #[inline]
-    pub fn layer<L, NewReqBody>(self, layer: L) -> NamedRouter<S, NewReqBody>
+    pub fn layer<L>(self, layer: L) -> NamedRouter<S>
     where
-        L: Layer<Route<B>> + Clone + Send + 'static,
-        L::Service: Service<Request<NewReqBody>> + Clone + Send + 'static,
-        <L::Service as Service<Request<NewReqBody>>>::Response: IntoResponse + 'static,
-        <L::Service as Service<Request<NewReqBody>>>::Error: Into<Infallible> + 'static,
-        <L::Service as Service<Request<NewReqBody>>>::Future: Send + 'static,
-        NewReqBody: HttpBody + 'static,
+        L: Layer<Route> + Clone + Send + 'static,
+        L::Service: Service<Request<Body>> + Clone + Send + 'static,
+        <L::Service as Service<Request<Body>>>::Response: IntoResponse + 'static,
+        <L::Service as Service<Request<Body>>>::Error: Into<Infallible> + 'static,
+        <L::Service as Service<Request<Body>>>::Future: Send + 'static,
     {
         let inner = self.inner.layer(layer);
         NamedRouter {
@@ -184,7 +183,7 @@ where
     /// The merges the inner axum [`Router`](axum::Router) and the route map on this router
     pub fn merge<R>(mut self, other: R) -> Self
     where
-        R: Into<NamedRouter<S, B>>,
+        R: Into<NamedRouter<S>>,
     {
         let other = other.into();
         self.inner = self.inner.merge(other.inner);
@@ -225,7 +224,7 @@ where
     where
         N: Into<String>,
         P: AsRef<str>,
-        R: Into<NamedRouter<S, B>>,
+        R: Into<NamedRouter<S>>,
     {
         let name = name.into();
         let router = router.into();
@@ -250,7 +249,7 @@ where
 
     /// Add a service the the router with a name and a path
     /// the name can then later be used to get a reference to the path
-    pub fn route<N, P>(mut self, name: N, path: P, method_router: MethodRouter<S, B>) -> Self
+    pub fn route<N, P>(mut self, name: N, path: P, method_router: MethodRouter<S>) -> Self
     where
         N: Into<String>,
         P: AsRef<str>,
@@ -265,11 +264,11 @@ where
     #[inline]
     pub fn route_layer<L>(mut self, layer: L) -> Self
     where
-        L: Layer<Route<B>> + Clone + Send + 'static,
-        L::Service: Service<Request<B>> + Clone + Send + 'static,
-        <L::Service as Service<Request<B>>>::Response: IntoResponse + 'static,
-        <L::Service as Service<Request<B>>>::Error: Into<Infallible> + 'static,
-        <L::Service as Service<Request<B>>>::Future: Send + 'static,
+        L: Layer<Route> + Clone + Send + 'static,
+        L::Service: Service<Request<axum::body::Body>> + Clone + Send + 'static,
+        <L::Service as Service<Request<axum::body::Body>>>::Response: IntoResponse + 'static,
+        <L::Service as Service<Request<axum::body::Body>>>::Error: Into<Infallible> + 'static,
+        <L::Service as Service<Request<axum::body::Body>>>::Future: Send + 'static,
     {
         self.inner = self.inner.route_layer(layer);
         self
@@ -281,7 +280,7 @@ where
     where
         N: Into<String>,
         P: AsRef<str>,
-        T: Service<Request<B>, Error = ServiceErr> + Clone + Send + 'static,
+        T: Service<Request<axum::body::Body>, Error = ServiceErr> + Clone + Send + 'static,
         T::Response: IntoResponse,
         T::Future: Send + 'static,
     {
@@ -292,7 +291,7 @@ where
     }
 
     /// The same as [`Router::with_state`](axum::Router::with_state)
-    pub fn with_state<S2>(self, state: S) -> NamedRouter<S2, B> {
+    pub fn with_state<S2>(self, state: S) -> NamedRouter<S2> {
         let inner = self.inner.with_state(state);
         NamedRouter {
             inner,
@@ -307,19 +306,17 @@ where
     }
 
     /// Convert into a [`Router`](axum::Router) after adding an [`Routes`] as an [`Extension`](axum::extract::Extension) layer
-    pub fn into_router(self) -> axum::Router<S, B> {
+    pub fn into_router(self) -> axum::Router<S> {
         self.inner.layer(Extension(Routes::new(self.routes)))
     }
 }
 
-impl<B> NamedRouter<(), B>
-where
-    B: HttpBody + Send + 'static,
+impl NamedRouter<()>
 {
     /// Uses [`Router::into_make_service`](axum::Router::into_make_service) after
     /// adding an [`Extension<Routes>`](axum::extract::Extension) layer to the inner router
     #[cfg(feature = "tokio")]
-    pub fn into_make_service(self) -> IntoMakeService<axum::Router<(), B>> {
+    pub fn into_make_service(self) -> IntoMakeService<axum::Router<()>> {
         let inner = self.into_router();
         inner.into_make_service()
     }
@@ -329,13 +326,13 @@ where
     #[cfg(feature = "tokio")]
     pub fn into_make_service_with_connect_info<C>(
         self,
-    ) -> IntoMakeServiceWithConnectInfo<axum::Router<(), B>, C> {
+    ) -> IntoMakeServiceWithConnectInfo<axum::Router<()>, C> {
         let inner = self.into_router();
         inner.into_make_service_with_connect_info()
     }
 }
 
-impl<S, B> Clone for NamedRouter<S, B>
+impl<S> Clone for NamedRouter<S>
 where
     S: Clone,
 {
@@ -348,13 +345,11 @@ where
     }
 }
 
-impl<B> Service<Request<B>> for NamedRouter<(), B>
-where
-    B: HttpBody + Send + 'static,
+impl Service<Request<axum::body::Body>> for NamedRouter<()>
 {
     type Response = ServiceResp;
     type Error = ServiceErr;
-    type Future = RouteFuture<B, ServiceErr>;
+    type Future = RouteFuture<ServiceErr>;
 
     #[inline]
     fn poll_ready(
@@ -365,15 +360,14 @@ where
     }
 
     #[inline]
-    fn call(&mut self, req: Request<B>) -> Self::Future {
+    fn call(&mut self, req: Request<axum::body::Body>) -> Self::Future {
         self.inner.call(req)
     }
 }
 
-impl<S, B> Default for NamedRouter<S, B>
+impl<S> Default for NamedRouter<S>
 where
     S: Clone + Send + Sync + 'static,
-    B: HttpBody + Send + 'static,
 {
     fn default() -> Self {
         Self {
@@ -391,13 +385,13 @@ mod tests {
     use std::path::PathBuf;
 
     use crate::{NamedRouter, Routes};
-    use axum::{routing::get, body::Body};
+    use axum::routing::get;
 
     async fn dummy(_routes: Routes) {}
 
     #[test]
     fn nesting() {
-        let a = NamedRouter::<(), Body>::new().route("route_a", "/a", get(dummy));
+        let a = NamedRouter::<()>::new().route("route_a", "/a", get(dummy));
         let b = NamedRouter::new()
             .route("route_a", "/a", get(dummy))
             .route("route_b", "/b", get(dummy));
@@ -419,7 +413,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn route_overlap() {
-        let a = NamedRouter::<(), Body>::new().route("route_a", "/a", get(dummy));
+        let a = NamedRouter::<()>::new().route("route_a", "/a", get(dummy));
         let b = NamedRouter::new().route("route_a", "/a", get(dummy));
         NamedRouter::new().nest("a", "/", a).nest("b", "/", b);
     }
