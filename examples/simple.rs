@@ -34,7 +34,5 @@ async fn main() {
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    axum::serve(listener, app.into_router())
-        .await
-        .unwrap();
+    axum::serve(listener, app.into_router()).await.unwrap();
 }

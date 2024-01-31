@@ -7,18 +7,25 @@
 //!
 //! Check out [`NamedRouter`] and [`Routes`] for more information on how this works
 
-use std::{collections::HashMap, convert::Infallible, path::{PathBuf, Path}, sync::Arc, task::Poll};
+use std::{
+    collections::HashMap,
+    convert::Infallible,
+    path::{Path, PathBuf},
+    sync::Arc,
+    task::Poll,
+};
 
 use axum::{
     body::Body,
-
     extract::{
-        connect_info::IntoMakeServiceWithConnectInfo, rejection::ExtensionRejection, FromRequestParts,
+        connect_info::IntoMakeServiceWithConnectInfo, rejection::ExtensionRejection,
+        FromRequestParts,
     },
+    handler::Handler,
     http::Request,
-    response::{Response, IntoResponse},
-    routing::{future::RouteFuture, IntoMakeService, Route, MethodRouter},
-    Extension, handler::Handler,
+    response::{IntoResponse, Response},
+    routing::{future::RouteFuture, IntoMakeService, MethodRouter, Route},
+    Extension,
 };
 use futures::{future::BoxFuture, FutureExt, TryFutureExt};
 use tower_layer::Layer;
@@ -90,11 +97,14 @@ impl Routes {
 impl<S: Send + Sync> FromRequestParts<S> for Routes {
     type Rejection = ExtensionRejection;
 
-    fn from_request_parts<'life0,'life1,'async_trait>(parts: &'life0 mut axum::http::request::Parts, state: &'life1 S) -> BoxFuture<'async_trait, Result<Self, Self::Rejection>>
-    where 
-        'life0:'async_trait,
-        'life1:'async_trait,
-        Self:'async_trait
+    fn from_request_parts<'life0, 'life1, 'async_trait>(
+        parts: &'life0 mut axum::http::request::Parts,
+        state: &'life1 S,
+    ) -> BoxFuture<'async_trait, Result<Self, Self::Rejection>>
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        Self: 'async_trait,
     {
         Extension::<Self>::from_request_parts(parts, state)
             .map_ok(|ext| ext.0)
@@ -311,8 +321,7 @@ where
     }
 }
 
-impl NamedRouter<()>
-{
+impl NamedRouter<()> {
     /// Uses [`Router::into_make_service`](axum::Router::into_make_service) after
     /// adding an [`Extension<Routes>`](axum::extract::Extension) layer to the inner router
     #[cfg(feature = "tokio")]
@@ -345,8 +354,7 @@ where
     }
 }
 
-impl Service<Request<Body>> for NamedRouter<()>
-{
+impl Service<Request<Body>> for NamedRouter<()> {
     type Response = ServiceResp;
     type Error = ServiceErr;
     type Future = RouteFuture<ServiceErr>;
@@ -392,9 +400,11 @@ mod tests {
     #[test]
     fn nesting() {
         let a = NamedRouter::<()>::new().route("route_a", "/a", get(dummy));
-        let b = NamedRouter::new()
-            .route("route_a", "/a", get(dummy))
-            .route("route_b", "/b", get(dummy));
+        let b = NamedRouter::new().route("route_a", "/a", get(dummy)).route(
+            "route_b",
+            "/b",
+            get(dummy),
+        );
         let c = NamedRouter::new().route("route_c", "/c", get(dummy));
 
         let app = NamedRouter::new()
