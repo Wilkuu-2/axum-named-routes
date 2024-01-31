@@ -1,4 +1,4 @@
-# Axum Named Routes
+# Axum Named Routes (But poorly migrated to axum 0.7)
 
 `axum-named-routes` is a library which allows users to easily define routes with names in axum, and get the route path from the route name at runtime.
 
